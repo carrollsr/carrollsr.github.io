@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Digital Christmas Card</title>
+    <title>Christmas Carroll's Card</title>
     <style>
         :root {
             --border-color: #a52a2a;
@@ -23,7 +23,6 @@
             font-family: 'Arial', sans-serif;
             min-height: 100vh;
             box-sizing: border-box;
-            overflow: hidden;
         }
 
         .card-container {
@@ -73,33 +72,47 @@
         .card-back {
             background-color: #ffffff;
             transform: rotateY(180deg);
-            display: flex;
-            flex-direction: column;
-            justify-content: space-between;
-            padding: 20px;
+            display: grid;
+            grid-template-rows: auto auto 1fr auto;
+            justify-items: center;
+            align-items: center;
+            padding: 10px;
             text-align: center;
             color: var(--text-color);
+            gap: 10px;
+            box-sizing: border-box;
         }
 
         .recipients {
-            font-size: 1rem;
-            margin-bottom: 1rem;
+            font-size: clamp(0.9rem, 1.5vw, 1.2rem);
         }
 
         .message {
-            font-size: 1.1rem;
-            margin-bottom: 1rem;
+            font-size: clamp(0.8rem, 1.4vw, 1rem);
         }
 
         .family-photo img {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+            border-radius: 5px;
+        }
+
+        .family-photo {
             width: 100%;
             height: auto;
-            border-radius: 5px;
+            flex-grow: 1;
         }
 
         .signature {
             font-style: italic;
-            margin-top: 1rem;
+            text-align: center;
+        }
+
+        .signature img {
+            max-width: 100%;
+            max-height: 50px; /* Prevent excessive scaling */
+            object-fit: contain;
         }
 
         footer {
@@ -140,7 +153,7 @@
     </div>
 
     <footer>
-        The Source Code for this e-Card is available for free at 
+        Get the free source code for this e-Card from HedTwoToe at 
         <a href="https://github.com/carrollsr/carrollsr.github.io" target="_blank" rel="noopener">
             GitHub
         </a>

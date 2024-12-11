@@ -1,0 +1,210 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Christmas Carroll's Card</title>
+    <style>
+        body {
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            background-color: #f9f7f6;
+            font-family: 'Arial', sans-serif;
+            min-height: 100vh;
+            box-sizing: border-box;
+        }
+
+        .card-container {
+            flex: 1;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            width: 100%;
+            height: 100%;
+            padding: 10px;
+            box-sizing: border-box;
+        }
+
+        .card {
+            width: 90%;
+            max-width: 300px;
+            aspect-ratio: 3 / 4;
+            position: relative;
+            perspective: 1000px;
+        }
+
+        .card-inner {
+            width: 100%;
+            height: 100%;
+            position: absolute;
+            transform-style: preserve-3d;
+            transform: rotateY(0deg);
+            transition: transform 1s ease-in-out;
+        }
+
+        .card-inner.open {
+            transform: rotateY(-180deg);
+        }
+
+        .card-front, .card-back {
+            width: 100%;
+            height: 100%;
+            position: absolute;
+            backface-visibility: hidden;
+            border: 5px solid #a52a2a;
+            box-sizing: border-box;
+        }
+
+        .card-front {
+            background: url('your_front_image.jpg') center/cover no-repeat, #d2b48c;
+        }
+
+        .card-back {
+            background-color: #ffffff;
+            transform: rotateY(180deg);
+            display: grid;
+            grid-template-rows: auto auto 1fr auto;
+            justify-items: center;
+            align-items: center;
+            padding: 10px;
+            text-align: center;
+            color: #333;
+            gap: 10px;
+            box-sizing: border-box;
+        }
+
+        .recipients {
+            font-size: 1.2rem;
+            font-weight: bold;
+        }
+
+        .message {
+            font-size: 1rem;
+            margin-bottom: 10px;
+        }
+
+        .your_inside_image img {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+            border-radius: 5px;
+        }
+
+        .signature {
+            font-style: italic;
+        }
+
+        .signature img {
+            max-width: 100%;
+            max-height: 50px;
+            object-fit: contain;
+        }
+    </style>
+</head>
+<body>
+    <div class="card-container">
+        <div class="card" tabindex="0" role="button" aria-label="Flip the card" onclick="toggleCard()">
+            <div class="card-inner">
+                <div class="card-front" aria-hidden="true"></div>
+                <div class="card-back">
+                    <div class="recipients" id="recipients"></div>
+                    <div class="message">
+                        Wishing you a very Merry Christmas and a Happy New Year!
+                    </div>
+                    <div class="your_inside_image">
+                        <img src="your_inside_image.jpg" alt="Inside image">
+                    </div>
+                    <div class="signature" id="signature"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        async function deriveAESKey(randomSeed) {
+            const encoder = new TextEncoder();
+            const keyMaterial = encoder.encode(randomSeed);
+
+            // Hash the key material to derive a 256-bit key
+            const hashedKey = await crypto.subtle.digest('SHA-256', keyMaterial);
+
+            // Import the hashed key as an AES-GCM key
+            return crypto.subtle.importKey(
+                'raw',
+                hashedKey,
+                { name: 'AES-GCM' },
+                false,
+                ['decrypt']
+            );
+        }
+
+        async function decryptRecipientInfo(encryptedData, iv, randomSeed) {
+            const decoder = new TextDecoder();
+            const key = await deriveAESKey(randomSeed);
+
+            // Decode the encrypted data and IV from Base64
+            const encryptedBytes = Uint8Array.from(atob(encryptedData), c => c.charCodeAt(0));
+            const ivBytes = Uint8Array.from(atob(iv), c => c.charCodeAt(0));
+
+            // Perform AES-GCM decryption
+            const decryptedData = await crypto.subtle.decrypt(
+                { name: 'AES-GCM', iv: ivBytes },
+                key,
+                encryptedBytes
+            );
+
+            return decoder.decode(decryptedData);
+        }
+
+        async function validateCard() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const encryptedData = urlParams.get('data');
+            const iv = urlParams.get('iv');
+
+            if (!encryptedData || !iv) {
+                document.body.innerHTML = "<h1>Error: Invalid link</h1>";
+                return;
+            }
+
+            const randomSeed = "o$(R_1a^!39.24p2xc]=%%OrOaES=g%C"; // Replace with the same key used for encryption
+
+            try {
+                const recipientInfo = await decryptRecipientInfo(encryptedData, iv, randomSeed);
+                document.getElementById('recipients').textContent = `Dear ${recipientInfo},`;
+
+                // Check if the signature image exists
+                const signatureImage = "signature_image.jpg"; // Replace with the actual image path
+                const signatureElement = document.getElementById('signature');
+                const fallbackText = "With love, [Your Signatures]";
+
+                fetch(signatureImage, { method: 'HEAD' })
+                    .then(response => {
+                        if (response.ok) {
+                            const img = document.createElement('img');
+                            img.src = signatureImage;
+                            img.alt = "Signature";
+                            signatureElement.appendChild(img);
+                        } else {
+                            signatureElement.textContent = fallbackText;
+                        }
+                    })
+                    .catch(() => {
+                        signatureElement.textContent = fallbackText;
+                    });
+            } catch (error) {
+                console.error("Decryption failed:", error);
+                document.body.innerHTML = "<h1>Error: Unauthorized access</h1>";
+            }
+        }
+
+        function toggleCard() {
+            document.querySelector('.card-inner').classList.toggle('open');
+        }
+
+        validateCard();
+    </script>
+</body>
+</html>

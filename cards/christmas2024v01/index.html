@@ -165,11 +165,11 @@
             const iv = urlParams.get('iv');
 
             if (!encryptedData || !iv) {
-                document.body.innerHTML = "<h1>Error: Invalid link</h1>";
+                document.body.innerHTML = "<h1>Error: Invalid link<br>but Merry Christmas anyway!</h1>";
                 return;
             }
 
-            const randomSeed = "o$(R_1a^!39.24p2xc]=%%OrOaES=g%C"; // Replace with the same key used for encryption
+            const randomSeed = "o$(R_1a^!39.24p2xc]=%%OrOaES=g%C"; 
 
             try {
                 const recipientInfo = await decryptRecipientInfo(encryptedData, iv, randomSeed);

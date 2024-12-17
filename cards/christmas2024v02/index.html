@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Christmas Carroll's Card</title>
+    <style>
+        body {
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            background-color: #f9f7f6;
+            font-family: 'Arial', sans-serif;
+            min-height: 100vh;
+            box-sizing: border-box;
+        }
+
+        .card-container {
+            flex: 1;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            width: 100%;
+            height: 100%;
+            padding: 10px;
+            box-sizing: border-box;
+        }
+
+        .card {
+            width: 90%;
+            max-width: 300px;
+            aspect-ratio: 3 / 4;
+            position: relative;
+            perspective: 1000px;
+        }
+
+        .card-inner {
+            width: 100%;
+            height: 100%;
+            position: absolute;
+            transform-style: preserve-3d;
+            transform: rotateY(0deg);
+            transition: transform 1s ease-in-out;
+        }
+
+        .card-inner.open {
+            transform: rotateY(-180deg);
+        }
+
+        .card-front, .card-back {
+            width: 100%;
+            height: 100%;
+            position: absolute;
+            backface-visibility: hidden;
+            border: 5px solid #a52a2a;
+            box-sizing: border-box;
+        }
+
+        .card-front {
+            background: url('your_front_image.jpg') center/cover no-repeat, #d2b48c;
+        }
+
+        .card-back {
+            background-color: #ffffff;
+            transform: rotateY(180deg);
+            display: grid;
+            grid-template-rows: auto auto 1fr auto;
+            justify-items: center;
+            align-items: center;
+            padding: 10px;
+            text-align: center;
+            color: #333;
+            gap: 10px;
+            box-sizing: border-box;
+        }
+
+        .recipients {
+            font-size: 1.2rem;
+            font-weight: bold;
+        }
+
+        .message {
+            font-size: 1rem;
+            margin-bottom: 10px;
+        }
+
+        .your_inside_image img {
+            max-width: 100%;
+            max-height: 100%;
+            object-fit: contain;
+            border-radius: 5px;
+        }
+
+        .signature {
+            font-style: italic;
+        }
+
+        .signature img {
+            max-width: 100%;
+            max-height: 50px;
+            object-fit: contain;
+        }
+    </style>
+</head>
+<body>
+    <div class="card-container">
+        <div class="card" tabindex="0" role="button" aria-label="Flip the card" onclick="toggleCard()">
+            <div class="card-inner">
+                <div class="card-front" aria-hidden="true"></div>
+                <div class="card-back">
+                    <div class="recipients" id="recipients"></div>
+                    <div class="message">
+                        Wishing you a very Merry Christmas and a Happy New Year!
+                    </div>
+                    <div class="your_inside_image">
+                        <img src="your_inside_image.jpg" alt="Inside image">
+                    </div>
+                    <div class="signature" id="signature"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Replace this with your Base64-encoded private key
+        const privateKeyBase64 = `MIIEvAIBADANBgkqhkiG9w0BAQEFAASCBKYwggSiAgEAAoIBAQDIbAUbddVb1ui8Km5LSogRQTbBVj9GeRRIEXs7uDLpdYT7xbNKILNIKyym7TjL7uLFMVW59R1HlKzU0OzZkD4AFH0sfcMEBqfj9549T9/OJmPb3+yUoPxR4qW0lSXCVxnOmhzifHkVCMUEp6f/KLLECHSHxbxXCaz65U5+elesHHouWiqWkBEdadWuuQ0/iZ3HU2Mr6UEvSwzQyGh12PXY9NnmLqqfNVf8r0PbjwtE0RO/4fYDTwkKmLb/g6bdrTzhL6xWg7bcingQ4qtxyNgtNmoVOgitchHyUisXD8DXqif8J74XPPeu8rVy2Ve8MYfyKUqZiurpWZWsOZkQtSz/AgMBAAECggEACrhob4cWggKVUVdNrf5PF+kulhnYaZsZYB97QX8BTiaIlfUFuY3VOSOCEG2474OYIqcYaEl5pvYHZpzERoDmKBfweBxD/aejfFim4K2wkXTRO5YXL/4KcRDX/zhJHEOPcFMi/2RcD6l37F9RZ58ULNMs9IQ5pkgwtfzk/XPq05xb+NdRYMX2ORwUe+i7ep53omBQbIpsXMC/7Pog+MsBhIVaxDV3DFeN1FVMoBzxqrgpwVM5znjKXTdYZMYmGAvCHKQEUzV/zege7WipNl/TddSn8VKpjH+VEOdA21WXWSmaAs9YC3btJZWfCchuJjXN9M6KEEgc/maPXxabMjWIhQKBgQD7qtBJHwf5xxrnnWJEVyaU+iODdeCU36SzSm6958vnQL2zFYgz9qY/LbWa7IMSq50TGwB0/iiHJe0enNMlXIyjuC7aPy3BRisXEjNYOGHOnFd8bW+k6v+IfGIMKfMV4WIE9uUEvkSPxO+F42ywj+5hTeFe6KWsjeyJJ/ZT4Bp5/QKBgQDL31mqiwqzwhNeYr/hYg468lyw8nnM+nRP+mNPRoWH2xT9cKNN9ZidU4MHXZHZAHovM0l8g7N2rtVSooyoohw92I2oaYFWSJEM0+ujL/qjpMyKtDKcMtP8/gCkhlQn5QOpCJgRZZs2w/H6jIFvOR5egAXW9s6Vsp4amalhGZ7FqwKBgGUHVGgWOfhukoFqb9lpdwaVSA5tEsQQ56hF+CDqXbOvDLhIq43YtTJloiLYUWH8XKkfzNYqdZCTjBYe9LBp79eFh+F7PV36UjAH0W7X64OqxYAg2pHE+OIMtLuXV4twGA5QIu39h76DW3hPLQHQNez/+7pDAMc9jjgdP8i6DUbtAoGAFAMDiTMGxOhbAFvPG++FGBIsOQ5EGHPJMQSR9PkmKFS/9bS1wvRFm8PTy8hKhbN/StzM7NT8q7yzod3k0rS+8u8r0IkyseaDnm+65JTUFHYbwc24Xg67Mk04gO3Smuvm9ROr4aFIoBKR0RczqVhA++OzLwug8Z7L2C6XKrnaFOsCgYBXq8+u8picdku/XMcmnmwF96lKMlEKYiRO03M+1svQ40S183dFt8NqehzBN6x9bQx1d8JbEDbe0zWxzj29yU+AEO4mCH73jFLbdRvUtb3j0jO/p58AuMRPxTLVplFX5jM7rqbm7dC+gPjFh/1spuKsCA2/5lFvYDUq4Eoz0sFxcg==`;
+
+        // Function to handle URL-safe Base64 decoding
+        function urlSafeBase64ToUint8Array(base64) {
+            const padded = base64.replace(/-/g, '+').replace(/_/g, '/') + '=='.slice((base64.length + 3) % 4);
+            return Uint8Array.from(atob(padded), c => c.charCodeAt(0));
+        }
+
+        // Import the RSA private key for decryption
+        async function importPrivateKey() {
+            const binaryKey = urlSafeBase64ToUint8Array(privateKeyBase64);
+            return await crypto.subtle.importKey(
+                "pkcs8",
+                binaryKey.buffer,
+                { name: "RSA-OAEP", hash: "SHA-256" },
+                true,
+                ["decrypt"]
+            );
+        }
+
+        // Decrypt the encrypted message
+        async function decryptMessage(encryptedBase64) {
+            const privateKey = await importPrivateKey();
+            const encryptedBytes = urlSafeBase64ToUint8Array(encryptedBase64);
+            const decrypted = await crypto.subtle.decrypt(
+                { name: "RSA-OAEP" },
+                privateKey,
+                encryptedBytes.buffer
+            );
+            return new TextDecoder().decode(decrypted);
+        }
+
+        // Display the decrypted recipient information
+        async function displayRecipient() {
+            const urlParams = new URLSearchParams(window.location.search);
+            const encryptedData = urlParams.get("data");
+
+            if (!encryptedData) {
+                document.getElementById("recipients").textContent = "Error: No data provided.";
+                return;
+            }
+
+            try {
+                const recipientInfo = await decryptMessage(encryptedData);
+                document.getElementById("recipients").textContent = `Dear ${recipientInfo},`;
+            } catch (error) {
+                console.error("Decryption failed:", error);
+                document.getElementById("recipients").textContent = "Error: Unauthorized access.";
+            }
+        }
+
+        // Toggle card flip animation
+        function toggleCard() {
+            document.querySelector('.card-inner').classList.toggle('open');
+        }
+
+        displayRecipient();
+    </script>
+</body>
+</html>

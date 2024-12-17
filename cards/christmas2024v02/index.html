@@ -95,6 +95,7 @@
 
         .signature {
             font-style: italic;
+            text-align: center;
         }
 
         .signature img {
@@ -117,7 +118,11 @@
                     <div class="your_inside_image">
                         <img src="your_inside_image.jpg" alt="Inside image">
                     </div>
-                    <div class="signature" id="signature"></div>
+                    <div class="signature" id="signature">
+                        <!-- Signature Image or Text -->
+                        <img id="signatureImage" src="signature_image.jpg" alt="Signature" onerror="this.style.display='none';">
+                        <span id="signatureFallback" style="display: none;">With love, [Your Signatures]</span>
+                    </div>
                 </div>
             </div>
         </div>
@@ -157,7 +162,7 @@
             return new TextDecoder().decode(decrypted);
         }
 
-        // Display the decrypted recipient information
+        // Display the decrypted recipient information and handle fallback signature
         async function displayRecipient() {
             const urlParams = new URLSearchParams(window.location.search);
             const encryptedData = urlParams.get("data");
@@ -174,6 +179,14 @@
                 console.error("Decryption failed:", error);
                 document.getElementById("recipients").textContent = "Error: Unauthorized access.";
             }
+
+            // Handle fallback text for missing signature image
+            const signatureImage = document.getElementById("signatureImage");
+            const signatureFallback = document.getElementById("signatureFallback");
+            signatureImage.onerror = () => {
+                signatureImage.style.display = "none";
+                signatureFallback.style.display = "inline";
+            };
         }
 
         // Toggle card flip animation

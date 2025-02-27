@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <link rel="stylesheet" href="games.css">
+    <title>24 Game</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            text-align: center;
+            margin: 20px;
+        }
+
+        #card-container {
+            display: flex;
+            justify-content: center;
+            margin-top: 20px;
+        }
+
+        .card {
+            width: 80px;
+            height: 120px;
+            perspective: 600px; /* needed for 3D flip */
+            margin: 10px;
+        }
+
+        .inner-card {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            text-align: center;
+            transition: transform 0.6s;
+            transform-style: preserve-3d;
+        }
+
+        /* Flip the card */
+        .flipped {
+            transform: rotateY(180deg);
+        }
+
+        .card-face {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            backface-visibility: hidden;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 2em;
+            border: 2px solid #444;
+            border-radius: 5px;
+        }
+
+        .card-back {
+            background-color: #ccc;
+        }
+
+        .card-front {
+            background-color: #fff;
+            transform: rotateY(180deg);
+        }
+
+        #message {
+            margin: 15px;
+            font-weight: bold;
+        }
+
+        #solution-input {
+            width: 300px;
+        }
+
+        #solutions-title {
+            margin-top: 20px;
+            font-weight: bold;
+            display: none; /* hidden until we reveal solutions */
+        }
+
+        #solutions-found {
+            margin-top: 10px;
+            white-space: pre-line; /* preserve line breaks if we want to list solutions */
+            max-width: 600px;
+            margin: 10px auto;
+            text-align: left;
+            border: 1px solid #ccc;
+            padding: 10px;
+            display: none; /* hidden until we reveal solutions */
+        }
+    </style>
+</head>
+<body>
+    <h1>24 Game</h1>
+    
+    <button id="play-button">Play</button>
+    <button id="reveal-button">Reveal Solutions</button>
+    
+    <div id="card-container"></div>
+    
+    <div id="message"></div>
+    
+    <div>
+        <input id="solution-input" type="text" placeholder="Enter your expression, e.g. (4*3)+(2*2)" />
+        <button id="check-solution-btn">Check solution</button>
+    </div>
+
+    <div id="solutions-title">Possible Solutions:</div>
+    <div id="solutions-found"></div>
+
+    <script>
+    /**************************
+     *     Global State       *
+     **************************/
+    let currentCards = [];
+    let validSolutions = []; // all solutions found for the current cards
+
+
+    /**************************
+     *    Utility Functions   *
+     **************************/
+    // Generate 4 random digits from 1-9
+    function generateFourCards() {
+        const result = [];
+        for (let i = 0; i < 4; i++) {
+            result.push(Math.floor(Math.random() * 9) + 1);
+        }
+        return result;
+    }
+
+    // Animate the turning over of cards and display their values
+    function displayCards(cards) {
+        const container = document.getElementById('card-container');
+        container.innerHTML = ''; // Clear any previous cards
+
+        cards.forEach((number, idx) => {
+            const cardDiv = document.createElement('div');
+            cardDiv.className = 'card';
+
+            const innerDiv = document.createElement('div');
+            innerDiv.className = 'inner-card';
+
+            const backFace = document.createElement('div');
+            backFace.className = 'card-face card-back';
+            backFace.textContent = '?';
+
+            const frontFace = document.createElement('div');
+            frontFace.className = 'card-face card-front';
+            frontFace.textContent = number;
+
+            innerDiv.appendChild(backFace);
+            innerDiv.appendChild(frontFace);
+            cardDiv.appendChild(innerDiv);
+            container.appendChild(cardDiv);
+
+            // Trigger a "turn over" effect for each card in sequence
+            setTimeout(() => {
+                innerDiv.classList.add('flipped');
+            }, 500 * idx);
+        });
+    }
+
+    // Compare two arrays as multisets (i.e., same elements, ignoring order)
+    function arraysEqualAsMultisets(arr1, arr2) {
+        if (arr1.length !== arr2.length) return false;
+        arr1.sort();
+        arr2.sort();
+        for (let i = 0; i < arr1.length; i++) {
+            if (arr1[i] !== arr2[i]) return false;
+        }
+        return true;
+    }
+
+    // Safe floating comparison to 24
+    function isNear24(value) {
+        return Math.abs(value - 24) < 1e-9;
+    }
+
+    // Evaluate an expression string safely
+    function tryEval(expression) {
+        try {
+            return eval(expression);
+        } catch (e) {
+            return null;
+        }
+    }
+
+
+    /*******************************
+     *   Finding All 24 Solutions  *
+     *******************************/
+    // Helper: get all permutations of an array
+    function permutations(arr) {
+        if (arr.length <= 1) return [arr];
+        const result = [];
+        for (let i = 0; i < arr.length; i++) {
+            const current = arr[i];
+            const remaining = [...arr.slice(0, i), ...arr.slice(i + 1)];
+            const remainingPerms = permutations(remaining);
+            for (const perm of remainingPerms) {
+                result.push([current, ...perm]);
+            }
+        }
+        return result;
+    }
+
+    // Generate all expressions (with minimal parentheses) using the 5 standard
+    // parenthesization patterns for 4 numbers: a,b,c,d
+    //
+    // Patterns:
+    // 1) ((a op1 b) op2 c) op3 d
+    // 2) (a op1 (b op2 c)) op3 d
+    // 3) (a op1 b) op2 (c op3 d)
+    // 4) a op1 ((b op2 c) op3 d)
+    // 5) a op1 (b op2 (c op3 d))
+    //
+    // For each of the 3 "slots" we consider +, -, *, or /.
+    function findAll24Solutions(nums) {
+        const ops = ['+', '-', '*', '/'];
+        const allSolutions = [];
+
+        // Generate permutations of the 4 digits
+        const perms = permutations(nums);
+
+        for (const perm of perms) {
+            const [a, b, c, d] = perm;
+            for (const op1 of ops) {
+                for (const op2 of ops) {
+                    for (const op3 of ops) {
+                        const expressions = [
+                            `((${a}${op1}${b})${op2}${c})${op3}${d}`,
+                            `(${a}${op1}(${b}${op2}${c}))${op3}${d}`,
+                            `(${a}${op1}${b})${op2}(${c}${op3}${d})`,
+                            `${a}${op1}((${b}${op2}${c})${op3}${d})`,
+                            `${a}${op1}(${b}${op2}(${c}${op3}${d}))`,
+                        ];
+                        for (const expr of expressions) {
+                            const val = tryEval(expr);
+                            if (val !== null && isFinite(val) && isNear24(val)) {
+                                if (!allSolutions.includes(expr)) {
+                                    allSolutions.push(expr);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        return allSolutions;
+    }
+
+
+    /************************
+     *   Main Game Logic    *
+     ************************/
+    // Start a new game by generating and displaying four cards
+    function play24Game() {
+        // Clear out old messages/solutions
+        document.getElementById('message').textContent = '';
+        document.getElementById('solution-input').value = '';
+        document.getElementById('solutions-found').textContent = '';
+        document.getElementById('solutions-found').style.display = 'none';
+        document.getElementById('solutions-title').style.display = 'none';
+
+        // Generate 4 new random digits
+        currentCards = generateFourCards();
+        displayCards(currentCards);
+
+        // Find all solutions (for reveal button)
+        validSolutions = findAll24Solutions(currentCards);
+
+        // If no solution, automatically try again
+        if (validSolutions.length === 0) {
+            document.getElementById('message').textContent =
+                'No solution with these cards. Generating a new set...';
+            setTimeout(play24Game, 2000);
+        } else {
+            // Display total number of solutions
+            const message = 
+                `Use these four digits to make 24! We found ${validSolutions.length} possible solution(s). Enter your expression below.`;
+            document.getElementById('message').textContent = message;
+        }
+    }
+
+    // Check the player’s input solution
+    // 1. Validate only allowed chars
+    // 2. Extract digits, compare to the dealt cards
+    // 3. Evaluate if equals 24
+    function checkSolution() {
+        const userExpr = document.getElementById('solution-input').value.trim();
+        const messageEl = document.getElementById('message');
+
+        if (!userExpr) {
+            messageEl.textContent = 'Please enter an expression.';
+            return;
+        }
+
+        // Allow digits, +, -, *, /, parentheses, whitespace
+        const validPattern = /^[\d+\-*/()\s]+$/;
+        if (!validPattern.test(userExpr)) {
+            messageEl.textContent = 'Invalid characters. Only digits, +, -, *, /, and parentheses allowed.';
+            return;
+        }
+
+        // Extract digits from the user expression
+        const digitMatches = userExpr.match(/\d/g) || [];
+        const userDigits = digitMatches.map(Number);
+
+        // Compare as multisets with currentCards
+        if (!arraysEqualAsMultisets(userDigits, [...currentCards])) {
+            messageEl.textContent = 'Please use each of the four digits exactly once.';
+            return;
+        }
+
+        // Evaluate expression
+        let result = null;
+        try {
+            const cleanedExpr = userExpr.replace(/\s+/g, '');
+            result = eval(cleanedExpr);
+        } catch (e) {
+            messageEl.textContent = 'Invalid expression (could not evaluate). Please try again.';
+            return;
+        }
+
+        // Check if result is 24
+        if (isNear24(result)) {
+            messageEl.textContent = 'Correct! Your expression evaluates to 24.';
+        } else {
+            messageEl.textContent = `Not quite. Your expression evaluates to ${result}, not 24. Try again.`;
+        }
+    }
+
+    // Reveal the precomputed solutions
+    function revealSolutions() {
+        const messageEl = document.getElementById('message');
+        if (!validSolutions.length) {
+            messageEl.textContent = 'No solutions to show. Please start a game first.';
+            return;
+        }
+        document.getElementById('solutions-title').style.display = 'block';
+        document.getElementById('solutions-found').textContent = validSolutions.join('\n');
+        document.getElementById('solutions-found').style.display = 'block';
+    }
+
+
+    /************************
+     *   Event Listeners    *
+     ************************/
+    document.getElementById('play-button').addEventListener('click', play24Game);
+    document.getElementById('check-solution-btn').addEventListener('click', checkSolution);
+    document.getElementById('reveal-button').addEventListener('click', revealSolutions);
+    </script>
+ 
+</body>
+</html>

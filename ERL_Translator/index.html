@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>ERL to Python Translator (AST-based Proof of Concept)</title>
+  <style>
+    body { font-family: sans-serif; margin: 20px; }
+    textarea { width: 100%; height: 250px; font-family: monospace; }
+    pre { background: #f0f0f0; padding: 10px; }
+  </style>
+</head>
+<body>
+<h1>ERL to Python Translator (AST-based)</h1>
+
+<p>This demo parses a small subset of ERL into a structured AST, then generates Python with indentation. 
+It is still a proof-of-concept, but more robust than simple regex replacements.</p>
+
+<textarea id="erlInput">
+// Try something like:
+// num = input("Enter Number")
+// for i = 1 to num
+//   print(i)
+// next i
+</textarea>
+<br/>
+<button onclick="translateErl()">Translate ERL → Python</button>
+<pre id="pythonOutput"></pre>
+
+<script>
+/**
+ * 1) Parse ERL code into an AST
+ *    Each AST node is { type: "...", ... } with optional children.
+ *
+ *    We'll parse statement by statement. Some statements
+ *    (like 'for' or 'if') create sub-blocks that continue until
+ *    an associated end (like 'next i' or 'endif').
+ *
+ *    This is minimal and only handles:
+ *      - assignments, e.g.  x = 5
+ *      - print statements, e.g.  print("Hello")
+ *      - for loops, e.g.   for i = 1 to num ... next i
+ *      - if / else / elseif / endif
+ *      - single-line approach, ignoring user indentation
+ *
+ *    Real code might handle while loops, procedures, etc.
+ */
+function parseERL(erlLines, startIndex=0) {
+  let ast = [];
+  let i = startIndex;
+
+  while (i < erlLines.length) {
+    const rawLine = erlLines[i];
+    const line = rawLine.trim();
+
+    // If line is empty or comment, skip
+    if (!line || line.startsWith('//')) {
+      i++;
+      continue;
+    }
+
+    // If we meet a 'next' or 'endif', we return, because that closes a block
+    if (/^next\s+/i.test(line) || /^endif\b/i.test(line)) {
+      // We'll return so the caller block can handle that
+      break;
+    }
+
+    // If line starts with 'else' or 'elseif', also break
+    // so the caller block can handle that as part of an if.
+    if (/^else\b/i.test(line) || /^elseif\b/i.test(line)) {
+      break;
+    }
+
+    // 1) FOR loops
+    let forMatch = line.match(/^for\s+(\w+)\s*=\s*(\S+)\s+to\s+(\S+)/i);
+    if (forMatch) {
+      // e.g. "for i = 1 to num"
+      const varName = forMatch[1];
+      const startVal = forMatch[2];  // could be 1 or a variable
+      const endVal   = forMatch[3];
+
+      // We need to parse all statements inside until 'next i'
+      // We'll recursively call parseERL with an offset
+      let children = [];
+      i++;
+      while (i < erlLines.length) {
+        let innerLine = erlLines[i].trim();
+        // If we see `next i`, break
+        if (new RegExp(`^next\\s+${varName}\\b`, 'i').test(innerLine)) {
+          // consume that line, then break
+          i++;
+          break;
+        }
+        // Otherwise, parse statements inside the loop
+        let [block, newIndex] = parseERL(erlLines, i);
+        // block = array of statements inside
+        children.push(...block);
+        i = newIndex;
+      }
+
+      ast.push({
+        type: 'For',
+        varName,
+        startVal,
+        endVal,
+        children
+      });
+      continue;
+    }
+
+    // 2) IF statements
+    let ifMatch = line.match(/^if\s+(.*)\s+then$/i);
+    if (ifMatch) {
+      // parse condition
+      const condition = ifMatch[1];
+      // parse children until we see 'elseif', 'else', or 'endif'
+      let children = [];
+      i++;
+      let branchDone = false;
+      while (i < erlLines.length && !branchDone) {
+        const nextLine = erlLines[i].trim();
+
+        if (/^elseif\b/i.test(nextLine)) {
+          // we'll return to let the parent if handle it
+          break;
+        }
+        if (/^else\b/i.test(nextLine)) {
+          break;
+        }
+        if (/^endif\b/i.test(nextLine)) {
+          // consume that line
+          i++;
+          branchDone = true;
+          break;
+        }
+
+        // parse sub-block
+        let [block, newIdx] = parseERL(erlLines, i);
+        children.push(...block);
+        i = newIdx;
+      }
+
+      let ifNode = {
+        type: 'If',
+        condition,
+        children
+      };
+
+      // Now check if there's an elseif or else chain
+      // We'll store them in an array if found
+      let elseIfNodes = [];
+      while (i < erlLines.length) {
+        let elifLine = erlLines[i].trim();
+        if (/^elseif\b/i.test(elifLine)) {
+          let elifMatch = elifLine.match(/^elseif\s+(.*)\s+then$/i);
+          if (elifMatch) {
+            let elifCond = elifMatch[1];
+            i++;
+            // gather children
+            let elifChildren = [];
+            while (i < erlLines.length) {
+              let cLine = erlLines[i].trim();
+              if (/^elseif\b/i.test(cLine) || /^else\b/i.test(cLine) || /^endif\b/i.test(cLine)) {
+                break;
+              }
+              let [block, newIdx] = parseERL(erlLines, i);
+              elifChildren.push(...block);
+              i = newIdx;
+            }
+            elseIfNodes.push({
+              type: 'ElseIf',
+              condition: elifCond,
+              children: elifChildren
+            });
+          }
+          else {
+            i++;
+          }
+        }
+        else if (/^else\b/i.test(elifLine)) {
+          // parse else children
+          i++;
+          let elseChildren = [];
+          while (i < erlLines.length) {
+            let eLine = erlLines[i].trim();
+            if (/^endif\b/i.test(eLine)) {
+              i++;
+              break;
+            }
+            if(/^elseif\b/i.test(eLine)) {
+              // theoretically invalid code, but let's break
+              break;
+            }
+            let [block, newIdx] = parseERL(erlLines, i);
+            elseChildren.push(...block);
+            i = newIdx;
+          }
+          elseIfNodes.push({
+            type: 'Else',
+            children: elseChildren
+          });
+        }
+        else {
+          // no more else/elseif
+          break;
+        }
+      }
+
+      ifNode.elseIf = elseIfNodes;
+      ast.push(ifNode);
+      continue;
+    }
+
+    // 3) assignment: e.g. x = expression
+    let assignMatch = line.match(/^(\w+)\s*=\s*(.*)$/);
+    if (assignMatch) {
+      ast.push({
+        type: 'Assignment',
+        varName: assignMatch[1],
+        expression: assignMatch[2]
+      });
+      i++;
+      continue;
+    }
+
+    // 4) print statements
+    let printMatch = line.match(/^print\s*\((.*)\)\s*$/i);
+    if (printMatch) {
+      ast.push({
+        type: 'Print',
+        expression: printMatch[1]
+      });
+      i++;
+      continue;
+    }
+
+    // If it doesn't match anything, treat as 'unknown' node
+    ast.push({ type: 'Unknown', content: line });
+    i++;
+  }
+
+  return [ast, i];
+}
+
+/**
+ * 2) Generate Python code from the AST
+ *    We'll track indentation as we recurse into child blocks
+ */
+function generatePython(ast, indentLevel=0) {
+  const INDENT = '    '; // 4 spaces
+  let pythonLines = [];
+
+  function indent() {
+    return INDENT.repeat(indentLevel);
+  }
+
+  for (let node of ast) {
+    switch (node.type) {
+      case 'Assignment': {
+        // e.g. x = input("Enter number")
+        // We'll just keep it "x = expression"
+        pythonLines.push(indent() + `${node.varName} = ${node.expression}`);
+        break;
+      }
+      case 'Print': {
+        // e.g. print("Hello")
+        pythonLines.push(indent() + `print(${node.expression})`);
+        break;
+      }
+      case 'For': {
+        // ERL "for i = startVal to endVal"
+        // We'll do "for i in range(startVal, endVal+1):"
+        // If startVal is numeric, we keep it. If not, we wrap in int(...).
+        // Similarly for endVal. This is simplistic.
+        let startStr = maybeWrapInt(node.startVal);
+        let endStr = maybeWrapInt(node.endVal) + `+1`;
+        pythonLines.push(indent() + `for ${node.varName} in range(${startStr}, ${endStr}):`);
+        // Then children
+        indentLevel++;
+        pythonLines.push(...generatePython(node.children, indentLevel));
+        indentLevel--;
+        break;
+      }
+      case 'If': {
+        // "if node.condition:"
+        pythonLines.push(indent() + `if ${node.condition}:`);
+        // children
+        indentLevel++;
+        pythonLines.push(...generatePython(node.children, indentLevel));
+        indentLevel--;
+
+        // handle elseif chain
+        if (node.elseIf) {
+          for (let part of node.elseIf) {
+            if (part.type === 'ElseIf') {
+              pythonLines.push(indent() + `elif ${part.condition}:`);
+              indentLevel++;
+              pythonLines.push(...generatePython(part.children, indentLevel));
+              indentLevel--;
+            }
+            else if (part.type === 'Else') {
+              pythonLines.push(indent() + `else:`);
+              indentLevel++;
+              pythonLines.push(...generatePython(part.children, indentLevel));
+              indentLevel--;
+            }
+          }
+        }
+        break;
+      }
+      case 'Unknown': {
+        // We'll just output it as a comment for now
+        pythonLines.push(indent() + `# Unknown ERL: ${node.content}`);
+        break;
+      }
+      default:
+        pythonLines.push(indent() + `# [Unhandled node type: ${node.type}]`);
+        break;
+    }
+  }
+
+  return pythonLines;
+}
+
+/**
+ * Utility: check if a string is purely numeric. If not, wrap in int().
+ */
+function maybeWrapInt(str) {
+  // If str is numeric, e.g. "10", just return "10"
